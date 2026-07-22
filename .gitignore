@@ -1,0 +1,44 @@
+# Local Android SDK configuration
+local.properties
+
+# Android Studio / IntelliJ local state
+.idea/
+*.iml
+captures/
+
+# Gradle and Kotlin caches / generated output
+.gradle/
+.kotlin/
+**/build/
+**/.cxx/
+**/.externalNativeBuild/
+
+# Packaged Android artifacts
+*.apk
+*.aab
+*.ap_
+*.mapping
+
+# Signing keys and local signing configuration
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+signing.properties
+
+# Environment files, credentials, and service-local configuration
+.env
+.env.*
+!.env.example
+secrets.properties
+credentials.properties
+credentials.json
+google-services.json
+
+# Logs and operating-system metadata
+*.log
+.DS_Store
+Thumbs.db

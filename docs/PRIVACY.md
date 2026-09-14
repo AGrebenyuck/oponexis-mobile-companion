@@ -13,16 +13,24 @@ Purpose limitation, data minimization, least privilege, short retention, user-vi
 | Номер телефона | CRM lookup и связь события | Формат, законное основание и retention открыты |
 | CRM customer reference | Связать карточку/событие | Должен быть opaque; retention открыт |
 | Краткая карточка | Контекст сотруднику | Поля, lock-screen policy и cache TTL открыты |
-| Call observation | Поддерживаемые платформой события | Точность и набор проверяются PoC |
-| Outcome/note | Результат разговора | Справочник и необходимость note открыты |
+| Call observation | API 30+ disconnect category и coarse duration bucket | M5 process-local PoC; без identity, retention только до смерти процесса |
+| Outcome/note | Optional outcome; notes отсутствуют | История 30 дней default или forever по выбору; CRM retention открыт |
 | Device/account context | Auth, support, audit | Минимизировать; перечень открыт |
 | Diagnostics | Устранение неисправностей | Sanitized, явный экспорт, TTL открыт |
 
-Не собирать audio, recording, transcript, SMS или адресную книгу целиком. `READ_CONTACTS` не означает разрешение загружать контакты в CRM; permission требует отдельного approval, purpose и privacy review.
+Не собирать audio, recording, transcript, SMS или адресную книгу целиком. Пользователь одобрил `READ_CONTACTS` 2026-07-23 с узкой целью: позволить Android передавать CallScreeningService звонки от сохранённых номеров. M2 не читает Contact Provider и не загружает контакты в CRM. Любое прямое чтение полей контакта, синхронизация или `WRITE_CONTACTS` требует отдельного purpose, approval и privacy review.
+
+M3 PoC передаёт нормализованный номер только в body авторизованного lookup-запроса, не помещает его в URL или логи и не сохраняет persistent cache. Ответ ограничен opaque `customerRef` и nullable `displayName`; обычные логи не содержат ни одного из этих значений.
+
+M4 хранит последнюю карточку только в памяти процесса. UI показывает nullable `displayName` и общий статус match; номер и `customerRef` не отображаются. Состояние исчезает после process death или явного Clear. Карточка не показывается через lock screen, overlay, notification или recent-app export policy.
+
+M5 игнорирует переданный Android call handle и хранит только process-local счётчик, disconnect category и coarse duration bucket. Эти данные не связываются с CRM-клиентом, не помещаются в Room/DataStore/outbox и не экспортируются. Категории не должны интерпретироваться как точное время ответа/завершения или длительность.
+
+После M7 outcome полный номер и optional подтверждённое CRM display name сохраняются в локальной истории на 30 дней по умолчанию либо бессрочно по явному выбору в Settings. При delivery outbox очищает phone/customer payload, но история сохраняется по выбранной policy. Cleanup не удаляет unresolved, undelivered или permanent-failure records. Номер/имя не попадают в structured logs.
 
 ## Экран и уведомления
 
-До решения нельзя показывать PII на lock screen, в notification preview, recent-app snapshot или overlay. Требуются redaction policy, accessibility review и тесты на физическом устройстве.
+Product owner 2026-07-24 явно одобрил показ полного caller number и подтверждённого CRM display name в M6 notification, включая secure lock screen. Это осознанное исключение из прежнего conservative baseline; оно подтверждено на текущем Xiaomi, но требует formal privacy/security approval до M9. Overlay по-прежнему отсутствует. Recents/screenshot policy и fleet notification settings остаются открытыми.
 
 ## Логи и аналитика
 
@@ -30,7 +38,7 @@ Purpose limitation, data minimization, least privilege, short retention, user-vi
 
 ## Lifecycle данных
 
-Нужно определить collection trigger, local cache TTL, outbox retention после delivery/permanent failure, backup policy, logout wipe, employee departure, remote revoke, legal hold и CRM retention. До утверждения действует принцип минимально необходимого хранения, но численные сроки не выдумываются.
+Локальная history policy для M7: 30 дней default или forever. Всё ещё нужно определить outbox metadata retention после delivery, permanent-failure remediation, backup, logout/wipe, employee departure, legal hold и CRM retention. Forever является product setting, но требует formal privacy/legal acceptance до M9.
 
 ## Права и governance
 

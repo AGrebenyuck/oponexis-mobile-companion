@@ -1,0 +1,13 @@
+# Copy to release.properties. The real file is ignored by Git.
+# This file contains release metadata, not credentials.
+
+crm.baseUrl=https://crm.company.example/
+# Accepted direction; the release gate stays closed until implementation is verified.
+crm.authMode=device_enrollment
+
+# Approved current channel: signed APK installed directly on the managed work phone.
+distribution.channel=managed_direct
+release.owner=REPLACE_RELEASE_OWNER
+support.contact=REPLACE_SUPPORT_CONTACT
+privacy.owner=REPLACE_PRIVACY_OWNER
+security.owner=REPLACE_SECURITY_OWNER

@@ -7,6 +7,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -21,13 +23,23 @@ import com.oponexis.companion.ui.navigation.Destination
 import com.oponexis.companion.ui.screen.calls.CallsRoute
 import com.oponexis.companion.ui.screen.dashboard.DashboardRoute
 import com.oponexis.companion.ui.screen.diagnostics.DiagnosticsRoute
+import com.oponexis.companion.ui.screen.messages.MessagesRoute
 import com.oponexis.companion.ui.screen.onboarding.OnboardingRoute
 import com.oponexis.companion.ui.screen.settings.SettingsRoute
 import com.oponexis.companion.ui.screen.splash.SplashScreen
 import com.oponexis.companion.ui.theme.OponexisTheme
+import com.oponexis.companion.ui.localization.LocalUiLanguage
+import com.oponexis.companion.ui.localization.text
+import com.oponexis.companion.domain.model.UiLanguage
 
 @Composable
-fun OponexisApp(viewModel: AppViewModel = hiltViewModel()) {
+fun OponexisApp(
+    openCallOutcomeRequested: Boolean = false,
+    onOpenCallOutcomeHandled: () -> Unit = {},
+    openSmsSchedulerRequested: Boolean = false,
+    onOpenSmsSchedulerHandled: () -> Unit = {},
+    viewModel: AppViewModel = hiltViewModel(),
+) {
     val preferences by viewModel.preferences.collectAsStateWithLifecycle()
     val darkTheme = when (preferences?.themePreference) {
         ThemePreference.Dark -> true
@@ -35,12 +47,30 @@ fun OponexisApp(viewModel: AppViewModel = hiltViewModel()) {
         ThemePreference.System, null -> androidx.compose.foundation.isSystemInDarkTheme()
     }
 
+    CompositionLocalProvider(LocalUiLanguage provides (preferences?.uiLanguage ?: UiLanguage.Polish)) {
     OponexisTheme(darkTheme = darkTheme) {
+        val language = LocalUiLanguage.current
         val navController = rememberNavController()
         val backStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = backStackEntry?.destination
         val showBottomBar = Destination.bottomBarItems.any { item ->
             currentDestination?.hierarchy?.any { it.route == item.route } == true
+        }
+
+        LaunchedEffect(
+            openCallOutcomeRequested,
+            openSmsSchedulerRequested,
+            preferences?.onboardingComplete,
+            currentDestination?.route,
+        ) {
+            if ((openCallOutcomeRequested || openSmsSchedulerRequested) &&
+                preferences?.onboardingComplete == true &&
+                currentDestination?.route != Destination.Splash.route &&
+                currentDestination?.route != Destination.Onboarding.route
+            ) {
+                navController.navigate(Destination.Calls.route) { launchSingleTop = true }
+                onOpenCallOutcomeHandled()
+            }
         }
 
         Scaffold(
@@ -62,10 +92,10 @@ fun OponexisApp(viewModel: AppViewModel = hiltViewModel()) {
                                 icon = {
                                     Icon(
                                         imageVector = requireNotNull(destination.icon),
-                                        contentDescription = destination.label,
+                                        contentDescription = destination.localizedLabel(language),
                                     )
                                 },
-                                label = { Text(destination.label) },
+                                label = { Text(destination.localizedLabel(language)) },
                             )
                         }
                     }
@@ -81,9 +111,16 @@ fun OponexisApp(viewModel: AppViewModel = hiltViewModel()) {
                     SplashScreen(
                         preferences = preferences,
                         onFinished = { onboardingComplete ->
-                            val destination = if (onboardingComplete) Destination.Dashboard.route else Destination.Onboarding.route
+                            val destination = when {
+                                !onboardingComplete -> Destination.Onboarding.route
+                                openCallOutcomeRequested || openSmsSchedulerRequested -> Destination.Calls.route
+                                else -> Destination.Dashboard.route
+                            }
                             navController.navigate(destination) {
                                 popUpTo(Destination.Splash.route) { inclusive = true }
+                            }
+                            if ((openCallOutcomeRequested || openSmsSchedulerRequested) && onboardingComplete) {
+                                onOpenCallOutcomeHandled()
                             }
                         },
                     )
@@ -98,10 +135,28 @@ fun OponexisApp(viewModel: AppViewModel = hiltViewModel()) {
                     )
                 }
                 composable(Destination.Dashboard.route) { DashboardRoute(contentPadding) }
-                composable(Destination.Calls.route) { CallsRoute(contentPadding) }
+                composable(Destination.Calls.route) {
+                    CallsRoute(
+                        contentPadding = contentPadding,
+                        openSmsSchedulerRequested = openSmsSchedulerRequested,
+                        onOpenSmsSchedulerHandled = onOpenSmsSchedulerHandled,
+                    )
+                }
+                composable(Destination.Messages.route) { MessagesRoute(contentPadding) }
                 composable(Destination.Diagnostics.route) { DiagnosticsRoute(contentPadding) }
                 composable(Destination.Settings.route) { SettingsRoute(contentPadding) }
             }
         }
     }
+    }
+}
+
+private fun Destination.localizedLabel(language: UiLanguage): String = when (this) {
+    Destination.Dashboard -> language.text("Start", "Home", "Головна")
+    Destination.Calls -> language.text("Połączenia", "Calls", "Дзвінки")
+    Destination.Messages -> "SMS"
+    Destination.Diagnostics -> language.text("Diagnostyka", "Diagnostics", "Діагностика")
+    Destination.Settings -> language.text("Ustawienia", "Settings", "Налаштування")
+    Destination.Splash -> "Oponexis"
+    Destination.Onboarding -> language.text("Wprowadzenie", "Onboarding", "Знайомство")
 }

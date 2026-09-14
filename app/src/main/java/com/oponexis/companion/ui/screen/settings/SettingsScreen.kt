@@ -34,8 +34,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.oponexis.companion.BuildConfig
 import com.oponexis.companion.domain.model.ThemePreference
+import com.oponexis.companion.domain.model.HistoryRetention
 import com.oponexis.companion.domain.model.UserPreferences
+import com.oponexis.companion.domain.model.UiLanguage
 import com.oponexis.companion.domain.repository.SettingsRepository
+import com.oponexis.companion.ui.localization.LocalUiLanguage
+import com.oponexis.companion.ui.localization.text
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -60,6 +64,14 @@ class SettingsViewModel @Inject constructor(
     fun setDiagnosticDetails(enabled: Boolean) {
         viewModelScope.launch { repository.setDiagnosticDetails(enabled) }
     }
+
+    fun setHistoryRetention(retention: HistoryRetention) {
+        viewModelScope.launch { repository.setHistoryRetention(retention) }
+    }
+
+    fun setLanguage(language: UiLanguage) {
+        viewModelScope.launch { repository.setLanguage(language) }
+    }
 }
 
 @Composable
@@ -68,6 +80,7 @@ fun SettingsRoute(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val preferences by viewModel.preferences.collectAsStateWithLifecycle()
+    val language = LocalUiLanguage.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -79,18 +92,23 @@ fun SettingsRoute(
                 bottom = contentPadding.calculateBottomPadding() + 24.dp,
             ),
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineMedium)
+        Text(language.text("Ustawienia", "Settings", "Налаштування"), style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Make the companion feel at home.",
+            language.text(
+                "Dostosuj Companion do swojej pracy.",
+                "Make the companion feel at home.",
+                "Налаштуйте Companion для своєї роботи.",
+            ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp, bottom = 24.dp),
         )
-        Text("Appearance", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 10.dp))
+        Text(language.text("Wygląd", "Appearance", "Вигляд"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 10.dp))
         Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 1.dp) {
             Column {
                 ThemePreference.entries.forEachIndexed { index, theme ->
                     ThemeRow(
                         theme = theme,
+                        language = language,
                         selected = preferences.themePreference == theme,
                         onClick = { viewModel.setTheme(theme) },
                     )
@@ -99,7 +117,44 @@ fun SettingsRoute(
             }
         }
         Text(
-            "Diagnostics",
+            language.text("Język", "Language", "Мова"),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 28.dp, bottom = 10.dp),
+        )
+        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 1.dp) {
+            Column {
+                UiLanguage.entries.forEachIndexed { index, item ->
+                    LanguageRow(
+                        language = item,
+                        selected = preferences.uiLanguage == item,
+                        onClick = { viewModel.setLanguage(item) },
+                    )
+                    if (index < UiLanguage.entries.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                }
+            }
+        }
+        Text(
+            language.text("Historia połączeń", "Call history", "Історія дзвінків"),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 28.dp, bottom = 10.dp),
+        )
+        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 1.dp) {
+            Column {
+                HistoryRetention.entries.forEachIndexed { index, retention ->
+                    HistoryRetentionRow(
+                        retention = retention,
+                        language = language,
+                        selected = preferences.historyRetention == retention,
+                        onClick = { viewModel.setHistoryRetention(retention) },
+                    )
+                    if (index < HistoryRetention.entries.lastIndex) {
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    }
+                }
+            }
+        }
+        Text(
+            language.text("Diagnostyka", "Diagnostics", "Діагностика"),
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(top = 28.dp, bottom = 10.dp),
         )
@@ -113,9 +168,13 @@ fun SettingsRoute(
             ) {
                 Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-                    Text("Local health details", style = MaterialTheme.typography.titleMedium)
+                    Text(language.text("Stan aplikacji", "Local health details", "Стан застосунку"), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Shows sanitized app status only",
+                        language.text(
+                            "Pokazuje tylko bezpieczne dane diagnostyczne",
+                            "Shows sanitized app status only",
+                            "Показує лише безпечні діагностичні дані",
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -127,7 +186,11 @@ fun SettingsRoute(
             }
         }
         Text(
-            "Oponexis Mobile Companion ${BuildConfig.VERSION_NAME}\nInternal CallScreening PoC · M2",
+            language.text(
+                "Oponexis Mobile Companion ${BuildConfig.VERSION_NAME}\nŚrodowisko ${BuildConfig.BUILD_TYPE}",
+                "Oponexis Mobile Companion ${BuildConfig.VERSION_NAME}\n${BuildConfig.BUILD_TYPE} environment",
+                "Oponexis Mobile Companion ${BuildConfig.VERSION_NAME}\nСередовище ${BuildConfig.BUILD_TYPE}",
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 28.dp),
@@ -136,11 +199,34 @@ fun SettingsRoute(
 }
 
 @Composable
-private fun ThemeRow(theme: ThemePreference, selected: Boolean, onClick: () -> Unit) {
+private fun HistoryRetentionRow(
+    retention: HistoryRetention,
+    language: UiLanguage,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val label = when (retention) {
+        HistoryRetention.ThirtyDays -> language.text("Przechowuj przez 30 dni", "Keep for 30 days", "Зберігати 30 днів")
+        HistoryRetention.Forever -> language.text("Przechowuj bezterminowo", "Keep until manually changed", "Зберігати безстроково")
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        RadioButton(selected = selected, onClick = onClick)
+    }
+}
+
+@Composable
+private fun ThemeRow(theme: ThemePreference, language: UiLanguage, selected: Boolean, onClick: () -> Unit) {
     val (label, icon) = when (theme) {
-        ThemePreference.System -> "Use device setting" to Icons.Rounded.SettingsBrightness
-        ThemePreference.Light -> "Light" to Icons.Rounded.LightMode
-        ThemePreference.Dark -> "Dark" to Icons.Rounded.DarkMode
+        ThemePreference.System -> language.text("Zgodnie z urządzeniem", "Use device setting", "Як на пристрої") to Icons.Rounded.SettingsBrightness
+        ThemePreference.Light -> language.text("Jasny", "Light", "Світла") to Icons.Rounded.LightMode
+        ThemePreference.Dark -> language.text("Ciemny", "Dark", "Темна") to Icons.Rounded.DarkMode
     }
     Row(
         modifier = Modifier
@@ -151,6 +237,22 @@ private fun ThemeRow(theme: ThemePreference, selected: Boolean, onClick: () -> U
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        RadioButton(selected = selected, onClick = onClick)
+    }
+}
+
+@Composable
+private fun LanguageRow(language: UiLanguage, selected: Boolean, onClick: () -> Unit) {
+    val label = when (language) {
+        UiLanguage.Polish -> "Polski"
+        UiLanguage.English -> "English"
+        UiLanguage.Ukrainian -> "Українська"
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         RadioButton(selected = selected, onClick = onClick)
     }

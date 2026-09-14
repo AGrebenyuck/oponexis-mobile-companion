@@ -1,10 +1,62 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.google.services)
 }
+
+val localProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.isFile) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+fun loadOptionalProperties(fileName: String): Properties = Properties().apply {
+    val propertiesFile = rootProject.file(fileName)
+    if (propertiesFile.isFile) propertiesFile.inputStream().use(::load)
+}
+
+val releaseProperties = loadOptionalProperties("release.properties")
+val signingProperties = loadOptionalProperties("signing.properties")
+
+fun String.asBuildConfigString(): String =
+    "\"${replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")}\""
+
+val debugCrmBaseUrl = localProperties
+    .getProperty("OPONEXIS_CRM_BASE_URL")
+    ?.trim()
+    ?.takeIf(String::isNotEmpty)
+    ?.let { if (it.endsWith('/')) it else "$it/" }
+    ?: "https://invalid.local/"
+val debugCrmApiToken = localProperties
+    .getProperty("OPONEXIS_CRM_API_TOKEN")
+    ?.trim()
+    .orEmpty()
+val releaseCrmBaseUrl = releaseProperties
+    .getProperty("crm.baseUrl")
+    ?.trim()
+    ?.takeIf(String::isNotEmpty)
+    ?.let { if (it.endsWith('/')) it else "$it/" }
+    ?: "https://invalid.local/"
+val releaseAuthMode = releaseProperties
+    .getProperty("crm.authMode")
+    ?.trim()
+    .orEmpty()
+val signingValues = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    .associateWith { signingProperties.getProperty(it)?.trim().orEmpty() }
+val signingStoreFile = signingValues.getValue("storeFile")
+    .takeIf(String::isNotEmpty)
+    ?.let(rootProject::file)
+val signingReady = signingValues.values.all { it.isNotEmpty() && !it.startsWith("REPLACE_") } &&
+    signingStoreFile?.isFile == true
+
+// Add a mode here only after its runtime implementation and security tests exist.
+val implementedProductionAuthModes = emptySet<String>()
 
 android {
     namespace = "com.oponexis.companion"
@@ -14,15 +66,40 @@ android {
         applicationId = "com.oponexis.companion"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.2.0-m2"
+        versionCode = 18
+        versionName = "0.9.0-direct-sms"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+
+        buildConfigField("String", "CRM_BASE_URL", "https://invalid.local/".asBuildConfigString())
+        buildConfigField("String", "CRM_API_TOKEN", "".asBuildConfigString())
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
+    }
+
+    signingConfigs {
+        if (signingReady) {
+            create("internalRelease") {
+                storeFile = signingStoreFile
+                storePassword = signingValues.getValue("storePassword")
+                keyAlias = signingValues.getValue("keyAlias")
+                keyPassword = signingValues.getValue("keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            buildConfigField("String", "CRM_BASE_URL", debugCrmBaseUrl.asBuildConfigString())
+            buildConfigField("String", "CRM_API_TOKEN", debugCrmApiToken.asBuildConfigString())
+            manifestPlaceholders["usesCleartextTraffic"] = debugCrmBaseUrl.startsWith("http://").toString()
+        }
         release {
+            buildConfigField("String", "CRM_BASE_URL", releaseCrmBaseUrl.asBuildConfigString())
+            buildConfigField("String", "CRM_API_TOKEN", "".asBuildConfigString())
+            signingConfig = signingConfigs.findByName("internalRelease")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -62,6 +139,56 @@ android {
     }
 }
 
+tasks.register("verifyM9ReleaseInputs") {
+    group = "verification"
+    description = "Validates non-secret M9 release inputs and signing configuration."
+    doLast {
+        val errors = mutableListOf<String>()
+        if (!releaseCrmBaseUrl.startsWith("https://") ||
+            releaseCrmBaseUrl.contains("invalid.local") ||
+            releaseCrmBaseUrl.contains("ngrok") ||
+            releaseCrmBaseUrl.contains(".example")
+        ) {
+            errors += "crm.baseUrl must be a permanent production HTTPS URL"
+        }
+        if (releaseAuthMode !in setOf("oidc", "device_enrollment")) {
+            errors += "crm.authMode must be oidc or device_enrollment"
+        } else if (releaseAuthMode !in implementedProductionAuthModes) {
+            errors += "selected crm.authMode is not implemented yet"
+        }
+        listOf(
+            "distribution.channel",
+            "release.owner",
+            "support.contact",
+            "privacy.owner",
+            "security.owner",
+        ).forEach { key ->
+            val value = releaseProperties.getProperty(key)?.trim().orEmpty()
+            if (value.isEmpty() || value.startsWith("REPLACE_")) errors += "$key is not configured"
+        }
+        val distributionChannel = releaseProperties
+            .getProperty("distribution.channel")
+            ?.trim()
+            .orEmpty()
+        if (distributionChannel.isNotEmpty() &&
+            !distributionChannel.startsWith("REPLACE_") &&
+            distributionChannel !in setOf("managed_google_play", "mdm", "managed_direct")
+        ) {
+            errors += "distribution.channel must be managed_google_play, mdm, or managed_direct"
+        }
+        if (!signingReady) errors += "signing.properties is missing, incomplete, or points to no keystore"
+        if (errors.isNotEmpty()) {
+            throw GradleException("M9 release inputs are incomplete:\n- ${errors.joinToString("\n- ")}")
+        }
+    }
+}
+
+tasks.register("prepareM9Release") {
+    group = "build"
+    description = "Runs the M9 input gate, lint, tests, and signed release build."
+    dependsOn("verifyM9ReleaseInputs", "lint", "test", "assembleRelease")
+}
+
 kapt {
     correctErrorTypes = true
 }
@@ -92,6 +219,9 @@ dependencies {
     kapt(libs.androidx.room.compiler)
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.datastore.preferences)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 
     implementation(libs.retrofit.core)
     implementation(libs.okhttp.core)

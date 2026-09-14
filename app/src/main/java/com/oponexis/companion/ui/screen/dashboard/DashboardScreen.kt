@@ -40,6 +40,8 @@ import com.oponexis.companion.ui.components.CallRow
 import com.oponexis.companion.ui.components.OponexisWordmark
 import com.oponexis.companion.ui.theme.BrandBlue
 import com.oponexis.companion.ui.theme.BrandMint
+import com.oponexis.companion.ui.localization.LocalUiLanguage
+import com.oponexis.companion.ui.localization.text
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -60,6 +62,7 @@ fun DashboardRoute(
 
 @Composable
 private fun DashboardScreen(state: DashboardSnapshot, contentPadding: PaddingValues) {
+    val language = LocalUiLanguage.current
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -73,23 +76,23 @@ private fun DashboardScreen(state: DashboardSnapshot, contentPadding: PaddingVal
         item {
             OponexisWordmark()
             Spacer(Modifier.height(28.dp))
-            Text("Good morning, ${state.employeeName}", style = MaterialTheme.typography.headlineMedium)
+            Text(language.text("Przegląd aktywności", "Activity overview", "Огляд активності"), style = MaterialTheme.typography.headlineMedium)
             Text(
-                "Here’s your conversation pulse.",
+                language.text("Połączenia i synchronizacja CRM z tego urządzenia.", "Real call and CRM sync status from this device.", "Дзвінки та синхронізація CRM із цього пристрою."),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        item { HeroCard(state) }
+        item { HeroCard(state, language.text("połączeń dzisiaj", "calls today", "дзвінків сьогодні")) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricCard("Identified", state.identifiedCalls.toString(), Icons.Rounded.CheckCircle, Modifier.weight(1f))
-                MetricCard("Pending", state.pendingEvents.toString(), Icons.Rounded.Sync, Modifier.weight(1f))
+                MetricCard(language.text("Rozpoznane", "Identified", "Розпізнані"), state.identifiedCalls.toString(), Icons.Rounded.CheckCircle, Modifier.weight(1f))
+                MetricCard(language.text("Oczekujące", "Pending", "Очікують"), state.pendingEvents.toString(), Icons.Rounded.Sync, Modifier.weight(1f))
             }
         }
         item {
             Text(
-                "Recent calls",
+                language.text("Ostatnie połączenia", "Recent calls", "Останні дзвінки"),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
             )
@@ -99,7 +102,7 @@ private fun DashboardScreen(state: DashboardSnapshot, contentPadding: PaddingVal
 }
 
 @Composable
-private fun HeroCard(state: DashboardSnapshot) {
+private fun HeroCard(state: DashboardSnapshot, callsTodayLabel: String) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -125,7 +128,7 @@ private fun HeroCard(state: DashboardSnapshot) {
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Bold,
             )
-            Text("calls today", color = Color.White.copy(alpha = 0.76f), style = MaterialTheme.typography.bodyLarge)
+            Text(callsTodayLabel, color = Color.White.copy(alpha = 0.76f), style = MaterialTheme.typography.bodyLarge)
         }
     }
 }

@@ -1,24 +1,26 @@
 # Test Strategy
 
-Статус: **DRAFT; M2 emulator evidence recorded, physical layers pending**
+Статус: **DRAFT; M2–M8 available-matrix evidence recorded, remaining Realme/reference/API 29 pending**
 
 ## Принципы
 
 - Тест доказывает только наблюдаемое поведение в записанной конфигурации.
 - Официальная Android-документация задаёт ожидаемый контракт; PoC подтверждает применимость на выбранных API/OEM.
 - Emulator и physical devices — отдельные слои, ни один не заменяет другой.
-- `ANSWERED`, `ENDED` и duration не считаются доступными/точными до доказательств M2/M5.
+- M5 подтвердил только post-call disconnect category и coarse duration bucket на текущих API 30+ targets. Точные `ANSWERED`, `ENDED` timestamps и duration по-прежнему не считаются доступными.
 - CRM/network failure никогда не должен задерживать или блокировать звонок.
 
 ## Слои
 
 ### Automated host/JVM tests
 
-Текущий JVM baseline проверяет mock repositories/navigation и privacy-safe screening counters/timing. Phone normalization, API mapping, outbox transitions, retry classification/backoff и idempotency будут добавляться только в соответствующих milestone.
+Текущий JVM baseline проверяет Room outcome→outbox enqueue, navigation, normalization, caller state и privacy-safe screening/lifecycle metrics. Legacy mock repository удалён после перехода UI на Room.
 
 ### Android instrumentation/component tests
 
 Room transactions/recovery, WorkManager constraints, DataStore, service lifecycle adapters, permission branches, process death и UI accessibility. Реальные звонки и OEM behavior этими тестами полностью не доказываются.
+
+M7 baseline включает Room v4/migrations, atomic outcome+outbox, Compose outcomes/Skip и notification routing. На Xiaomi 3 targeted Room DAO/migration tests прошли; полный runner завершил 10 tests + 1 skip без failures, затем HyperOS/UTP transport завис до последних UI cases, поэтому это не объявляется полным pass.
 
 ### Contract/integration tests
 
@@ -42,9 +44,11 @@ Realme UI и HyperOS — compatibility targets, не специальные ар
 
 Для каждой комбинации API/device/role/permission/lock state записать: входящий/исходящий сценарий, фактические callbacks и monotonic timestamps, эталонное ручное действие, process state и результат. Отдельно исследовать rejected, missed, answered then ended, caller hangs up, second call, Bluetooth и dual-SIM при наличии. Только воспроизводимые сигналы получают продуктовые event names; приблизительные сигналы маркируются confidence/source.
 
+M5 baseline: API 30+ `ACTION_POST_CALL` тестируется отдельно от `CallScreeningService`; в M5 handle не читался, проверялись только disconnect category и duration bucket. M6 после отдельного approval добавил bounded `tel:` handle для temporary pending identity. Pixel_7 API 36 покрывает simulated answered/remote end. Xiaomi/HyperOS API 35 покрывает remote end, local end, missed и rejected реальными входящими звонками. Это device-scoped evidence, не точный lifecycle event и не замена оставшейся fleet matrix.
+
 ## Outbox reliability
 
-Проверить atomic enqueue, stable UUID, concurrent workers, crash до/после HTTP response, duplicate response, retry after reboot, bounded retry, auth failure, permanent validation failure, visibility/remediation, cleanup и migration после отдельного approval. Серверный тест подтверждает отсутствие повторного side effect.
+M7 реализует atomic enqueue, stable UUID, lease, network constraint, exponential WorkManager backoff, startup/reboot recovery, максимум 10 attempts и permanent visibility. CRM integration 2026-07-24 подтвердила create и identical duplicate replay с одним receipt. Xiaomi real-call test подтвердил offline pending, online sync и queued reboot recovery. Emulator M7 regression и остальные OEM остаются M8 scope.
 
 ## Security/privacy tests
 

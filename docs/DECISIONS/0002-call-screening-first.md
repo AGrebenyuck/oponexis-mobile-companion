@@ -13,7 +13,7 @@
 
 Локальное наблюдение/кэш допустимы только если измеренно укладываются во внутренний safety budget; при любой ошибке/неуверенности ответ даётся немедленно.
 
-Без `READ_CONTACTS` service может не получать звонки от системных контактов. `READ_CONTACTS` не добавляется автоматически и требует явного пользовательского одобрения, privacy/security rationale и denied-path tests.
+Без `READ_CONTACTS` service может не получать звонки от системных контактов. После physical baseline без permission пользователь явно одобрил `READ_CONTACTS` 2026-07-23 с узким purpose доставки screening callbacks; прямой доступ к контактным полям и `WRITE_CONTACTS` не одобрены. Denied/revoked path остаётся fail-open и требует тестов.
 
 ## Verified facts и assumptions
 

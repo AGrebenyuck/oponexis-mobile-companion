@@ -1,0 +1,7 @@
+# Copy to signing.properties. Never commit the real file or keystore.
+# Prefer an absolute path outside the repository.
+
+storeFile=/absolute/path/outside/repository/oponexis-upload.jks
+storePassword=REPLACE_STORE_PASSWORD
+keyAlias=REPLACE_KEY_ALIAS
+keyPassword=REPLACE_KEY_PASSWORD

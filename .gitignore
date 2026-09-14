@@ -28,6 +28,7 @@ captures/
 *.key
 keystore.properties
 signing.properties
+release.properties
 
 # Environment files, credentials, and service-local configuration
 .env

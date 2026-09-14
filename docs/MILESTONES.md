@@ -39,11 +39,13 @@
 - **Automated tests:** response decision/state tests, no-network-on-critical-path guard where feasible, timeout/error tests, sanitized timing telemetry.
 - **Emulator tests:** role setup, incoming-call simulation where supported, cold start, permission denial, process death and delayed fake network.
 - **Physical-device tests:** real incoming calls on reference, Realme UI and HyperOS; saved/unsaved contact cases; locked/unlocked; OEM evidence recorded.
-- **Permissions:** only platform role/service declarations after review; `READ_CONTACTS` is not added without explicit approval and must be tested as absent first.
+- **Permissions:** platform role/service declarations reviewed; `READ_CONTACTS` добавлен только после explicit approval и successful physical baseline без permission. Denied, granted и revoked branches проверяются отдельно; иных phone/contact permissions нет.
 - **Risks:** OEM/Phone-app variation, missed deadline, system contacts not delivered, role unavailable, emulator mismatch.
 - **Rollback conditions:** keep feature disabled/remove PoC if deadline independence or fail-open cannot be proven; do not merge speculative production path.
 
 ## M3 CRM caller lookup
+
+Статус: **ACCEPTED 2026-07-23 FOR INTERNAL/NGROK SCOPE**; production identity, rate limiting, permanent deployment и remaining fleet validation остаются release-блокерами.
 
 - **Scope:** approved auth flow, agreed lookup contract, networking boundary, sanitized mapping, timeout/cache policy prototype and contract tests.
 - **Exclusions:** network delay of screening response, final caller card, write events/outcomes, unapproved CRM fields.
@@ -58,71 +60,78 @@
 
 ## M4 Caller card
 
-- **Scope:** approved minimal fields, Compose presentation, loading/not-found/error/stale states, privacy/accessibility behavior and chosen Android surface.
+Статус: **ACCEPTED 2026-07-23 — current Xiaomi/HyperOS scope; remaining fleet deferred to M8**
+
+- **Scope:** approved minimal fields, Compose presentation, loading/not-found/error/stale states, privacy/accessibility behavior; выбранная поверхность — только вкладка Calls внутри приложения.
 - **Exclusions:** full CRM editing, default dialer replacement, overlay without approval, outcome flow and unverified lifecycle claims.
 - **Dependencies:** M3; product-approved fields/wording; lock-screen/notification policy; UX surface feasibility evidence.
 - **Acceptance criteria:** correct authorized card appears in approved context; stale/error states clear; no call interference; accessibility/privacy criteria met.
 - **Automated tests:** state reducer/ViewModel, Compose UI/screenshot or semantics tests, redaction and authorization-state tests.
 - **Emulator tests:** screen sizes, font scale, dark mode, rotation, locked-state simulation, slow/missing lookup.
 - **Physical-device tests:** timing and visibility during real calls on reference/Realme/HyperOS; lock screen, notification/recents, accessibility.
-- **Permissions:** no overlay/notification/contacts permission unless separately proposed and approved with rationale.
+- **Permissions:** `ACCESS_NETWORK_STATE` одобрен для recovery retry; no overlay/notification/additional contacts permission unless separately proposed and approved with rationale.
 - **Risks:** Android/OEM UI restrictions, PII exposure, late card, inaccessible UI, misleading match.
 - **Rollback conditions:** disable card surface and retain safe internal lookup diagnostics if privacy, correctness or call UX fails; remove replaced UI path after validation.
 
 ## M5 Call lifecycle investigation and implementation
 
-- **Scope:** evidence-driven investigation and implementation only for reproducible call observations; source/confidence semantics; missed/rejected/answered/ended/duration scenarios.
-- **Exclusions:** assuming exact `ANSWERED`, `ENDED` or duration; call recording; unsupported outgoing/SMS features.
-- **Dependencies:** M2/M4; official API review; physical test matrix; product decision on acceptable confidence; permission approvals if any.
-- **Acceptance criteria:** each emitted event maps to recorded evidence across supported matrix or is explicitly device-scoped/confidence-qualified; unsupported facts are not emitted.
-- **Automated tests:** observation state machine, ordering/deduplication, timestamp semantics, ambiguous/missing callback and process-death tests.
-- **Emulator tests:** reproducible supported scenarios, rapid calls, missed/rejected, process states; emulator limitations recorded.
-- **Physical-device tests:** full evidence protocol on reference/Realme/HyperOS, contacts, lock states, caller hang-up, answer/end, Bluetooth/dual-SIM when applicable.
-- **Permissions:** no phone/call-log/contact permission without explicit approval; test approved and denied branches separately.
+- **Status:** accepted 2026-07-23 for API 30+ post-call PoC on Pixel_7 Emulator and current Xiaomi/HyperOS; remaining fleet/call configurations deferred to M8 and do not inherit this evidence.
+- **Scope:** evidence-driven, process-local observation of `ACTION_POST_CALL`; categorical disconnect cause and duration bucket; missed/rejected/answered-then-ended scenarios without identity retention.
+- **Exclusions:** exact `ANSWERED`, exact `ENDED`, exact duration, durable call history, CRM/outbox emission, call recording, API 29 fallback and unsupported outgoing/SMS features.
+- **Dependencies:** M2/M4; official API review and physical test matrix. No new permission dependency was accepted.
+- **Acceptance criteria:** supported observations map to recorded device-scoped evidence; unsupported facts are not emitted. Met for current scope with remote/local/missed/rejected on Xiaomi and remote on Emulator.
+- **Automated tests:** mapping of documented/unknown values, repeated observation count and absence of identity fields. Durable ordering/deduplication/process-death semantics remain future work only if product events are approved.
+- **Emulator tests:** API 36 simulated answered incoming + remote end delivered `remote/short`; rapid, missed/rejected and process-state expansion remain pending.
+- **Physical-device tests:** Xiaomi/HyperOS real incoming matrix passed for caller hang-up, local end, missed and rejected. Reference/Realme, outgoing, lock/process states, Bluetooth/call waiting/dual-SIM semantics remain M8 evidence gaps.
+- **Permissions:** none added. `READ_PHONE_STATE`, `READ_CALL_LOG`, dialer role and additional permissions were explicitly not selected; existing `READ_CONTACTS` is unrelated to post-call processing.
 - **Risks:** callbacks inaccurate/absent, OEM divergence, false duration, duplicate/out-of-order events, regulatory implications.
 - **Rollback conditions:** remove/disable any event type that cannot meet evidence threshold; keep only verified observations and update product/API docs.
 
 ## M6 Call outcome
 
-- **Scope:** approved outcome taxonomy, UI association with supported call reference, validation, local save/edit policy and accessible error states.
-- **Exclusions:** arbitrary CRM editing, unapproved free-text notes, automatic outcome inference, reliance on unsupported lifecycle event.
-- **Dependencies:** M5; business-owned outcome dictionary, edit/time-window rules, CRM association and privacy decisions.
-- **Acceptance criteria:** user can select and locally persist valid outcome for correct call context; duplicate/missing context handled; wording and authorization approved.
-- **Automated tests:** taxonomy/validation, state restoration, association/deduplication, optional-note redaction and UI tests.
-- **Emulator tests:** interruption, rotation/process death, multiple calls, offline entry, accessibility/input behavior.
-- **Physical-device tests:** real-call follow-up flow on reference/Realme/HyperOS, notification/task switching and user acceptance.
-- **Permissions:** no new permission expected; any notification/surface permission requires approval.
-- **Risks:** wrong call association, sensitive notes, confusing mandatory flow, taxonomy drift.
-- **Rollback conditions:** disable submission UI and retain no incomplete outcome if taxonomy/association/privacy is unsafe; migrate/delete drafts only by approved policy.
+- **Status:** accepted 2026-07-24 for current API 30+ Emulator + Xiaomi/HyperOS scope; fleet stabilization remains M8.
+- **Scope:** approved optional outcome taxonomy, stable local call UUID, FIFO pending UI, Room persistence, Skip, notification/deep-link and temporary caller identity until resolve.
+- **Exclusions:** CRM submission/outbox, edit flow, notes, automatic outcome inference, overlay and API 29 fallback.
+- **Dependencies:** M5; approved Room migrations, `POST_NOTIFICATIONS`, outcome dictionary and explicit secure-lock caller-identity visibility decision.
+- **Acceptance criteria:** user can identify the pending number, select or skip, persist valid state, resolve multiple drafts in order and avoid call interference. Met for current scope.
+- **Automated tests:** UUID/draft mapping, one-time select, optional dismiss, identity cleanup, Room DAO/migrations and Compose choices/count.
+- **Emulator tests:** API 36 migrations, DB/UI instrumentation, synthetic number notification, direct navigation and resolve pass. Broader interruption/accessibility matrix remains M8.
+- **Physical-device tests:** Xiaomi real calls pass for background/secure-lock notification, matching number in Calls, outcome and Skip. Realme/reference pending.
+- **Permissions:** `POST_NOTIFICATIONS` explicitly approved; denial leaves Room/in-app path functional. No overlay/call-log/phone-state permission.
+- **Risks:** wrong association, lock-screen PII exposure accepted by product but pending privacy/security sign-off, spoofed post-call intent, best-effort pre-outbox insert and taxonomy drift.
+- **Rollback conditions:** disable name/number visibility or notification, retain in-app generic draft, and stop rollout on migration/association/privacy failure.
 
 ## M7 Offline queue and reliability
 
-- **Scope:** durable outbox, stable UUID, atomic enqueue, WorkManager-style delivery after dependency approval, retry/backoff, server idempotency, permanent-failure visibility/remediation.
-- **Exclusions:** silent infinite retries, best-effort memory queue, hidden data loss, unapproved DB migration or API change.
-- **Dependencies:** M3 API write contract and M6 outcomes; server idempotency proof; approved DB schema/dependencies/migration; retry/retention policy.
-- **Acceptance criteria:** events survive offline, process death and reboot; retries preserve UUID; duplicates cause one server side effect; permanent failures visible and actionable.
-- **Automated tests:** state transitions, transactions, leases/concurrency, crash windows, retry classification/backoff/jitter, auth, duplicate/conflict, cleanup and approved migrations.
-- **Emulator tests:** airplane mode, network constraints, reboot/process kill, clock change, storage pressure and long offline interval.
-- **Physical-device tests:** background/idle/reboot/network switching on reference/Realme/HyperOS; OEM battery restrictions and remediation evidence.
-- **Permissions:** network and boot/background declarations only as approved/required; no broad battery exemption without explicit approval.
+- **Status:** accepted 2026-07-24 for current Xiaomi/HyperOS scope; emulator M7 regression and remaining fleet move to M8.
+- **Scope:** durable Room v4 outbox, stable UUID, atomic enqueue, WorkManager delivery/recovery, bounded retry/backoff, server idempotency, permanent-failure visibility and real-data Home/Calls/Diagnostics.
+- **Exclusions:** silent infinite retries, edit/notes, manual failure remediation, production auth/deployment, battery exemption, foreground service and M8 fleet stabilization.
+- **Dependencies:** approved M3 API/M6 outcomes, Room v4/API changes, `RECEIVE_BOOT_COMPLETED`/`WAKE_LOCK`, server schema/idempotency and retention choice.
+- **Acceptance criteria:** Xiaomi confirmed offline pending, online sync and queued reboot recovery; stable UUID duplicate produced one server receipt; permanent failure remains visible by design. Met for current scoped acceptance.
+- **Automated tests:** atomic enqueue/repository, Room DAO/migrations, client compilation/classification paths, CRM schema/build and create/duplicate integration. Crash/race/clock/storage stress coverage remains open.
+- **Emulator tests:** not rerun for M7 in current session; API 36 remains a separate required layer before acceptance.
+- **Physical-device tests:** Xiaomi API 35 Room/UI smoke, real-call offline→online delivery and queued reboot recovery pass. Realme/reference pending M8.
+- **Permissions:** `INTERNET`/`ACCESS_NETWORK_STATE` previously approved; `RECEIVE_BOOT_COMPLETED`/`WAKE_LOCK` approved for M7. No broad battery exemption.
 - **Risks:** duplicate/lost event, worker suppression, corrupt DB, retry storm, permanent PII retention, unsupported server idempotency.
 - **Rollback conditions:** stop delivery safely without deleting queued records; disable event capture if durability/idempotency is unproven; DB rollback only via approved migration/release plan.
 
 ## M8 Multi-device stabilization
 
+- **Status:** accepted 2026-07-24 for available Pixel 7 API 36, Generic low-end API 36.1 and Xiaomi/HyperOS API 35 matrix; Realme/reference/API 29 remain explicitly unverified.
 - **Scope:** agreed device/OS matrix regression, OEM issue isolation, performance/battery/accessibility/privacy stabilization, upgrade tests and operational diagnostics.
 - **Exclusions:** permanent OEM forks without evidence, expansion to unsupported devices/features, release signing/distribution completion.
 - **Dependencies:** M7; actual fleet inventory, physical devices, support workflow, acceptance SLOs and prioritized compatibility policy.
-- **Acceptance criteria:** agreed matrix passes release-critical scenarios or has explicitly accepted documented limitations; no PII diagnostics; stable deadline/outbox metrics.
+- **Acceptance criteria:** available matrix passes automated/UI/background/lock/FIFO sync scenarios with documented API 29/Realme/reference limitations. Met for scoped acceptance.
 - **Automated tests:** full CI regression, compatibility guards, performance baselines, log/export PII scans and upgrade tests.
-- **Emulator tests:** supported API matrix regression, form factors/configuration changes, stress/failure injection.
-- **Physical-device tests:** complete reference/Realme UI/HyperOS matrix including real calls, idle/reboot, lock screen, contacts, network changes, upgrade and long-run tests.
+- **Emulator tests:** Pixel 7 14/14; Generic low-end 14/14 plus landscape/130% font, force-idle and reboot. API 29 pending because image is not installed.
+- **Physical-device tests:** Xiaomi update/role/permission retention, background, secure lock, notification, FIFO rapid calls and sync pass. Realme/reference pending devices.
 - **Permissions:** audit actual manifest/runtime requests against approved register; remove unused permissions.
 - **Risks:** fragmented OEM behavior, unavailable models, battery regressions, workaround accumulation, unrepresentative test fleet.
 - **Rollback conditions:** narrow documented support matrix or disable affected capability/device path; remove failed workaround and restore last verified common behavior.
 
 ## M9 Signed internal 1.0 release
 
+- **Status:** preparation in progress; local configuration/signing templates and fail-closed Gradle gate added 2026-07-24. Managed direct APK distribution, separate DEV/production identities and device-enrollment auth direction accepted 2026-07-25. Auth API/schema/runtime implementation is pending; no signed 1.0 exists.
 - **Scope:** signed reproducible internal 1.0, approved distribution/update/rollback, release notes, support/incident/privacy procedures and final acceptance.
 - **Exclusions:** public Play release unless separately approved, external customers, SMS/full CRM/default Phone features.
 - **Dependencies:** M8 accepted; signing custody, application ID/versioning, distribution/MDM, legal/privacy/security approvals, CRM production readiness, support owners and rollback artifact.

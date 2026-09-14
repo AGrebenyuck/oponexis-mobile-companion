@@ -5,7 +5,7 @@ set -euo pipefail
 repository_root="$(git rev-parse --show-toplevel)"
 cd "$repository_root"
 
-forbidden_file_pattern='(^|/)(local\.properties|\.env($|\.)|.*\.(jks|keystore|p12|pfx|pem|key|apk|aab)|google-services\.json|secrets?\.(properties|json|ya?ml|env)|credentials\.(properties|json))$'
+forbidden_file_pattern='(^|/)(local\.properties|release\.properties|signing\.properties|\.env($|\.)|.*\.(jks|keystore|p12|pfx|pem|key|apk|aab)|google-services\.json|secrets?\.(properties|json|ya?ml|env)|credentials\.(properties|json))$'
 
 forbidden_files="$(git ls-files | grep -E "$forbidden_file_pattern" || true)"
 if [[ -n "$forbidden_files" ]]; then

@@ -11,7 +11,6 @@ class MainActivityTest {
     @Test
     fun applicationId_isCorrect() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.oponexis.companion", context.packageName)
+        assertEquals("com.oponexis.companion.dev", context.packageName)
     }
 }
-

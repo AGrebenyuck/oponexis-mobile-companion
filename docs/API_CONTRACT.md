@@ -1,14 +1,14 @@
-# OpenX CRM API Contract
+# OPONX CRM API Contract
 
-Статус: **DRAFT / PROPOSAL — НЕ ПОДТВЕРЖДЁН ТЕКУЩЕЙ OPENX CRM**
+Статус: **M3 lookup + M7 event LOCAL PoC VERIFIED / PRODUCTION DRAFT**
 
-Этот документ описывает потребности мобильного клиента и не утверждает существование endpoints, полей или моделей. Любое изменение/утверждение API требует согласования с владельцем OpenX CRM и пользователем.
+Caller lookup реализован 2026-07-23. Outcome event ingestion реализован и локально проверен 2026-07-24. Контракт остаётся DRAFT и не считается совпадающим с будущими production OPONX CRM models; production identity, authorization, rate limits и token lifecycle не утверждены.
 
 ## Общие соглашения (предлагаемые)
 
-- HTTPS only; JSON UTF-8.
-- Versioned base path, например `/mobile/v1`, если это соответствует правилам CRM.
-- Авторизация и lifecycle токенов не выбраны.
+- Production HTTPS only; локальный debug PoC допускает явно настроенный HTTP development host. JSON UTF-8.
+- Versioned caller-lookup path: `/api/mobile/v1` для текущего PoC.
+- Локальный PoC использует отдельный Bearer-токен; production auth и lifecycle токенов не выбраны.
 - `X-Correlation-Id` для трассировки без PII.
 - `Idempotency-Key` со стабильным UUID для каждой операции записи.
 - Сервер возвращает машинный error code, retryability и correlation ID; не возвращает secrets в ошибках.
@@ -16,11 +16,11 @@
 
 ## Caller lookup
 
-Предлагаемый запрос:
+Текущий PoC-запрос:
 
 ```http
-POST /mobile/v1/caller-lookup
-Authorization: <TBD>
+POST /api/mobile/v1/caller-lookup
+Authorization: Bearer <local-poc-token>
 Content-Type: application/json
 X-Correlation-Id: <uuid>
 
@@ -30,33 +30,30 @@ X-Correlation-Id: <uuid>
 }
 ```
 
-Предлагаемый ответ:
+Текущий PoC-ответ:
 
 ```json
 {
   "result": "matched",
   "match": {
     "customerRef": "opaque-id",
-    "displayName": "Example",
-    "organization": "Example Org",
-    "ownerDisplayName": "Example Owner",
-    "statusLabel": "Example Status"
+    "displayName": "Example"
   },
-  "cache": { "maxAgeSeconds": 300 },
-  "serverTime": "2026-01-01T00:00:00Z",
   "correlationId": "uuid"
 }
 ```
 
-`result` предлагается как `matched | not_found | ambiguous`. Возврат нескольких кандидатов, правила выбора, нормализация, поля карточки и authorization filtering не определены. Номер в примере вымышленный и не задаёт региональную политику.
+Реализованы `matched | not_found`; `ambiguous` не реализован, поскольку текущий `Customer.phone` уникален. `displayName` nullable. Lookup нормализует номер существующей CRM-функцией: явный `+` сохраняется, 9 цифр получают `+48`, остальные digits получают `+`. Этот алгоритм проверен как текущее поведение, но ещё не утверждён как международная policy. Persistent cache в M3 PoC отсутствует.
+
+Текущий lookup возвращает: `200` для matched/not-found, `400` для invalid JSON/request ID/phone, `401` для неверного Bearer token, `413` для объявленного body больше 4096 bytes, `500 server_error` и `503 mobile_api_not_configured`. Серверный rate limiting/`429` ещё не реализован; Android уже безопасно маппит будущий `429` в `Throttled`.
 
 ## Event ingestion
 
-Предлагаемый endpoint:
+Текущий M7 PoC endpoint:
 
 ```http
-POST /mobile/v1/call-events
-Authorization: <TBD>
+POST /api/mobile/v1/call-events
+Authorization: Bearer <local-poc-token>
 Idempotency-Key: <stable-event-uuid>
 Content-Type: application/json
 X-Correlation-Id: <uuid>
@@ -64,26 +61,32 @@ X-Correlation-Id: <uuid>
 {
   "eventId": "stable-event-uuid",
   "schemaVersion": 1,
-  "eventType": "call_observed",
+  "eventType": "call_outcome",
   "observedAt": "2026-01-01T00:00:00Z",
-  "source": "android_call_screening",
-  "confidence": "observed",
+  "resolvedAt": "2026-01-01T00:01:00Z",
+  "source": "android_post_call",
+  "confidence": "user_selected",
   "customerRef": "opaque-id-or-null",
   "callRef": "locally-generated-opaque-id",
-  "attributes": {}
+  "phoneNumber": "+48123456789",
+  "attributes": {
+    "disconnectCategory": "remote",
+    "durationBucket": "short",
+    "outcomeCode": "interested"
+  }
 }
 ```
 
-До доказательства нельзя отправлять `answered`, `ended` или duration как точные факты. Если PoC даст только приближённые сигналы, event type/`confidence` должны прямо отражать это.
+M7 отправляет только выбранный сотрудником outcome вместе с device-scoped disconnect category/coarse duration bucket. Это не утверждает точные `answered`, `ended` или duration. `phoneNumber`/`customerRef` nullable; сервер связывает существующего customer по reference, затем по normalized phone, не создавая клиента автоматически.
 
 Предлагаемый успешный ответ:
 
 ```json
 {
-  "eventId": "stable-event-uuid",
-  "status": "accepted",
-  "receiptId": "opaque-server-id",
-  "correlationId": "uuid"
+  "result": "accepted",
+  "receiptId": "stable-event-uuid",
+  "duplicate": false,
+  "correlationId": "stable-event-uuid"
 }
 ```
 
@@ -91,9 +94,7 @@ X-Correlation-Id: <uuid>
 
 ## Outcome ingestion
 
-Outcome может быть отдельным событием через тот же ingestion endpoint либо отдельным endpoint — решение открыто. Предлагаемые данные: stable event UUID, call reference, opaque outcome code, optional note только при подтверждённой необходимости, observedAt и schemaVersion.
-
-Справочник outcome, локализация, обязательность заметки и возможность изменения не определены.
+M7 принимает product-approved codes: `interested`, `follow_up_required`, `not_interested`, `wrong_number`, `other`. Skip не создаёт event; notes/editing отсутствуют. Один `callRef` допускает один outcome event в текущем DRAFT schema.
 
 ## Ошибки и retries (предложение)
 
@@ -106,7 +107,7 @@ Outcome может быть отдельным событием через то�
 | Transient server | 5xx | bounded backoff + jitter |
 | Network | timeout/offline | retry при подходящей сети |
 
-Точные status codes, retry limits, timeouts и response schemas должны быть согласованы с CRM. Lookup failure не блокирует звонок.
+M7 client: `200/201` delivered; `400/401/403/409/413/422` permanent; `429/5xx/network` retryable; максимум 10 attempts. Production policy и `Retry-After` support ещё требуют согласования. Lookup/delivery failure не блокирует звонок.
 
 ## Совместимость и эволюция
 
@@ -118,3 +119,31 @@ Outcome может быть отдельным событием через то�
 ## Необходимые подтверждения
 
 Все endpoints, auth, tenant model, phone normalization, fields, authorization, rate limits, environments, idempotency storage window, error taxonomy, retention и audit requirements перечислены в `OPEN_QUESTIONS.md`.
+## POST `/api/mobile/v1/sms-actions` — dev/internal
+
+Требует тот же временный Bearer dev-token, что caller lookup и call events.
+
+- `send_booking_form`: стабильный `requestId=callRef`, телефон, дата, время и редактируемый `messageOverride`. CRM всё равно повторно определяет нового/постоянного клиента, создаёт form token и подставляет безопасные placeholders.
+- `send_custom_message`: новый UUID на каждую отправку, телефон и редактируемый текст до 1000 символов.
+- `GET /api/mobile/v1/sms-actions`: возвращает фактический статус Gateway для `receiptId` (`QUEUED`, `SENT`, `DELIVERED`, `FAILED`, `CANCELLED`).
+
+CRM передаёт сообщение отдельному SMS Gateway; Companion не требует `SEND_SMS`. Входящее `TAK/YES` не подтверждает резервацию: единственным подтверждением является отправка публичной формы. После успешной отправки формы CRM отправляет отдельное SMS-подтверждение.
+
+## GET `/api/mobile/v1/sms-gateway-health` — dev/internal
+
+Защищён тем же mobile Bearer-token. Сервер проверяет SMS Gateway и настроенное устройство с timeout 4,5 секунды. `ready` возвращается только если `lastSeen` устройства не старше 20 минут; ответ содержит профиль, использование device ID, номер SIM, номер рабочей SIM, имя устройства, `deviceLastSeen`, время проверки и correlation ID. Логины, пароли, Gateway URL и токены клиенту не передаются.
+
+Android блокирует кнопку отправки до полноценного ответа `status=ready` с `deviceLastSeen` и позволяет повторить проверку. Ошибки включают `sms_gateway_device_offline`, `sms_gateway_device_not_found`, `sms_gateway_device_status_unknown`, `sms_gateway_not_configured`, `sms_gateway_timeout`, `sms_gateway_unavailable`, `mobile_api_not_configured` или `unauthorized` без секретов и provider payload.
+
+## Companion SMS templates — local
+
+Companion хранит системные и пользовательские шаблоны локально на рабочем телефоне и не обращается к этому API при открытии, создании или изменении шаблона. Telegram и остальные серверные сценарии продолжают получать шаблоны из CRM; их поведение не изменено. Старые mobile endpoints сохраняются для обратной совместимости, но текущий Companion их не использует.
+
+## Firebase SMS activity — internal
+
+- `POST /api/mobile/v1/push-registration` принимает Firebase Installation ID и точный Android application ID. Контракт защищён текущим mobile Bearer credential; FID не логируется и хранится с `lastSeenAt`.
+- `DELETE /api/mobile/v1/push-registration` отключает FID при явной отмене регистрации.
+- `GET /api/mobile/v1/sms-activity` возвращает до 100 последних исходящих SMS-событий без текста сообщения: event ID, provider message ID, статус, источник, телефон, failure detail и время.
+- FCM data payload не содержит номера телефона, имени или текста SMS: только event ID, статус, источник и время. Companion получает подробности через защищённый API.
+- Сервер публикует `QUEUED`, `SENT`, `DELIVERED`, `FAILED` и `CANCELLED` для Companion, формуляжей, напоминаний, подтверждений и кампаний.
+- После `QUEUED` Android создаёт один локальный WorkManager deadline на четыре минуты. В deadline выполняется одна серверная синхронизация; если финального статуса нет, Companion показывает локальное уведомление.

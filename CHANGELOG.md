@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added separate DEV/PROD Android flavors and Firebase configurations: DEV uses `com.oponexis.companion.dev`, while PROD uses `com.oponexis.companion`.
+- Added environment-specific CRM configuration so device registrations and SMS delivery remain isolated between DEV and PROD.
 - Added Firebase Installation ID-based push updates for manual and automatic SMS events, a compact local SMS activity panel, and a one-time four-minute stalled-message alert without heartbeat polling.
 - Replaced the legacy five-second SMS delivery polling worker with event-driven FCM updates plus one protected server refresh at the four-minute deadline.
 - Added one-tap `Skip all` for a queue of unresolved calls.

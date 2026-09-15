@@ -27,14 +27,25 @@ val signingProperties = loadOptionalProperties("signing.properties")
 fun String.asBuildConfigString(): String =
     "\"${replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")}\""
 
-val debugCrmBaseUrl = localProperties
-    .getProperty("OPONEXIS_CRM_BASE_URL")
+fun Properties.normalizedUrl(primaryKey: String, fallbackKey: String? = null): String? =
+    (getProperty(primaryKey) ?: fallbackKey?.let(::getProperty))
     ?.trim()
     ?.takeIf(String::isNotEmpty)
     ?.let { if (it.endsWith('/')) it else "$it/" }
+
+val devCrmBaseUrl = localProperties
+    .normalizedUrl("OPONEXIS_DEV_CRM_BASE_URL")
     ?: "https://invalid.local/"
-val debugCrmApiToken = localProperties
-    .getProperty("OPONEXIS_CRM_API_TOKEN")
+val devCrmApiToken = localProperties
+    .getProperty("OPONEXIS_DEV_CRM_API_TOKEN")
+    ?.trim()
+    .orEmpty()
+val prodCrmBaseUrl = localProperties
+    .normalizedUrl("OPONEXIS_PROD_CRM_BASE_URL", "OPONEXIS_CRM_BASE_URL")
+    ?: "https://invalid.local/"
+val prodCrmApiToken = (localProperties
+    .getProperty("OPONEXIS_PROD_CRM_API_TOKEN")
+    ?: localProperties.getProperty("OPONEXIS_CRM_API_TOKEN"))
     ?.trim()
     .orEmpty()
 val releaseCrmBaseUrl = releaseProperties
@@ -77,6 +88,24 @@ android {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
 
+    flavorDimensions += "environment"
+    productFlavors {
+        create("dev") {
+            dimension = "environment"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            buildConfigField("String", "CRM_BASE_URL", devCrmBaseUrl.asBuildConfigString())
+            buildConfigField("String", "CRM_API_TOKEN", devCrmApiToken.asBuildConfigString())
+            manifestPlaceholders["usesCleartextTraffic"] = devCrmBaseUrl.startsWith("http://").toString()
+        }
+        create("prod") {
+            dimension = "environment"
+            buildConfigField("String", "CRM_BASE_URL", prodCrmBaseUrl.asBuildConfigString())
+            buildConfigField("String", "CRM_API_TOKEN", prodCrmApiToken.asBuildConfigString())
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
+        }
+    }
+
     signingConfigs {
         if (signingReady) {
             create("internalRelease") {
@@ -90,11 +119,6 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".dev"
-            versionNameSuffix = "-dev"
-            buildConfigField("String", "CRM_BASE_URL", debugCrmBaseUrl.asBuildConfigString())
-            buildConfigField("String", "CRM_API_TOKEN", debugCrmApiToken.asBuildConfigString())
-            manifestPlaceholders["usesCleartextTraffic"] = debugCrmBaseUrl.startsWith("http://").toString()
         }
         release {
             buildConfigField("String", "CRM_BASE_URL", releaseCrmBaseUrl.asBuildConfigString())
@@ -186,7 +210,7 @@ tasks.register("verifyM9ReleaseInputs") {
 tasks.register("prepareM9Release") {
     group = "build"
     description = "Runs the M9 input gate, lint, tests, and signed release build."
-    dependsOn("verifyM9ReleaseInputs", "lint", "test", "assembleRelease")
+    dependsOn("verifyM9ReleaseInputs", "lintProdRelease", "testProdReleaseUnitTest", "assembleProdRelease")
 }
 
 kapt {

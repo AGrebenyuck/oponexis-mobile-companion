@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- SMS delivery now requests one dispatch at a time and continues after the phone reports a final result; applies an 8-second pacing delay and a 60-second pause after Android's SMS queue-limit error.
+- Bumped Android version to 0.9.1 (version code 19) for the paced SMS queue fix.
 - Added separate DEV/PROD Android flavors and Firebase configurations: DEV uses `com.oponexis.companion.dev`, while PROD uses `com.oponexis.companion`.
 - Added environment-specific CRM configuration so device registrations and SMS delivery remain isolated between DEV and PROD.
 - Added Firebase Installation ID-based push updates for manual and automatic SMS events, a compact local SMS activity panel, and a one-time four-minute stalled-message alert without heartbeat polling.

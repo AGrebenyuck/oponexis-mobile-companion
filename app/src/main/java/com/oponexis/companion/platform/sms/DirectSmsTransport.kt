@@ -82,7 +82,9 @@ class DirectSmsSyncWorker(context: Context, parameters: WorkerParameters) :
             val existing = dependencies.directSmsDao().find(id)
             if (existing != null) {
                 if (existing.status in setOf("SENT", "DELIVERED", "FAILED")) {
-                    report(dependencies, installationId, existing.id, existing.status, existing.error)
+                    if (report(dependencies, installationId, existing.id, existing.status, existing.error)) {
+                        dependencies.directSmsScheduler().sync(nextDelaySeconds(existing.error))
+                    }
                 }
                 continue
             }
@@ -128,7 +130,9 @@ class DirectSmsSyncWorker(context: Context, parameters: WorkerParameters) :
             val detail = error.message?.take(300) ?: error.javaClass.simpleName
             dependencies.directSmsDao().markFailed(id, detail, System.currentTimeMillis())
             val installationId = DirectSmsDeviceIdentity.read(applicationContext) ?: return
-            report(dependencies, installationId, id, "FAILED", detail)
+            if (report(dependencies, installationId, id, "FAILED", detail)) {
+                dependencies.directSmsScheduler().sync(nextDelaySeconds(detail))
+            }
         }
     }
 
@@ -199,6 +203,7 @@ class DirectSmsReceiptWorker(context: Context, parameters: WorkerParameters) :
         }.getOrDefault(false)
         if (!reported) return Result.retry()
         dependencies.smsNotifications().showStatus(message.status, message.source, "cmp:$id")
+        dependencies.directSmsScheduler().sync(nextDelaySeconds(message.error))
         return Result.success()
     }
 }
@@ -266,9 +271,10 @@ class IncomingSmsReceiver : BroadcastReceiver() {
 
 @Singleton
 class DirectSmsScheduler @Inject constructor(@ApplicationContext private val context: Context) {
-    fun sync() {
+    fun sync(initialDelaySeconds: Long = 0) {
         val request = OneTimeWorkRequestBuilder<DirectSmsSyncWorker>()
             .setConstraints(networkConstraints())
+            .setInitialDelay(initialDelaySeconds, TimeUnit.SECONDS)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork("direct-sms-sync", ExistingWorkPolicy.KEEP, request)
@@ -308,6 +314,9 @@ private fun smsError(code: Int): String = when (code) {
     else -> "Błąd wysyłania SMS ($code)"
 }
 
+private fun nextDelaySeconds(detail: String?): Long =
+    if (detail?.contains("Przekroczono limit wysyłania SMS", ignoreCase = true) == true) 60 else 8
+
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
 @EntryPoint
@@ -317,4 +326,5 @@ interface DirectSmsEntryPoint {
     fun crmNetworkConfig(): CrmNetworkConfig
     fun directSmsDao(): DirectSmsDao
     fun smsNotifications(): SmsActivityNotificationManager
+    fun directSmsScheduler(): DirectSmsScheduler
 }

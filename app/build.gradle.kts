@@ -77,8 +77,8 @@ android {
         applicationId = "com.oponexis.companion"
         minSdk = 29
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.9.0-direct-sms"
+        versionCode = 19
+        versionName = "0.9.1-direct-sms"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
